@@ -26,7 +26,7 @@ Stages 5, 6 and 7 are independent of each other and can be done in any order onc
 ## Per-stage workflow
 
 1. Write the domain/contract tests first; then the code.
-2. `npm run typecheck && npm run lint && npm test` must pass before the stage is closed.
+2. `npm run check` (typecheck + lint + unit tests) must pass before the stage is closed; `npm run test:integration` too once a stage has `*.int.test.ts` files.
 3. One branch / PR per stage; commit messages reference requirement IDs (e.g. `feat(domain): Job state machine (R1, R4)`).
 4. Tick the stage's definition of done and record any decisions in its "Decisions" section.
 
