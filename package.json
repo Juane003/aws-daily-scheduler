@@ -1,0 +1,34 @@
+{
+  "name": "aws-daily-scheduler",
+  "version": "0.1.0",
+  "description": "Distributed daily scheduler (hexagonal architecture)",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Juane003/aws-daily-scheduler.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Juane003/aws-daily-scheduler/issues"
+  },
+  "homepage": "https://github.com/Juane003/aws-daily-scheduler#readme",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.13.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}
