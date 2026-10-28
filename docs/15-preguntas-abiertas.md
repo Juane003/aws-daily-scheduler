@@ -23,3 +23,19 @@ Decisiones no cubiertas por CLAUDE.md, resueltas con la opción más simple (§1
 - **Breaker: defer en `HALF_OPEN`.** Los jobs que encuentran una prueba en curso se defieren `cbBaseCooldownS` (60 s), no hasta que venza el dueño.
 - **Sharding del grupo FIFO.** Con `providerShards = k > 1`, el shard es `uint32(sha256(registryId)[4..8]) % k`: usa bytes distintos a los del slot para que el shard no quede correlacionado con el slot.
 - **`registryId` en el mensaje.** Se transporta como string decimal (es un `BIGINT`) y el schema exige que `jobId` sea exactamente `${registryId}#${runDate}`.
+- **Puertos.** Los puertos viven en `src/core/ports.ts` y las filas del dominio en `src/core/model.ts`. El repositorio se divide en interfaces por tabla (`RegistryRepository`, `ExecutionRepository`, `DispatchWindowRepository`, `CircuitRepository`) para que cada componente declare solo lo que usa; el adaptador en memoria implementa todas.
+- **El intento se cuenta en el claim.** `claimExecution` hace `attempt = attempt + 1` en el mismo `UPDATE` que pasa la fila a `IN_PROGRESS`. Un Worker que se cae a mitad de la llamada consume ese intento, y por eso el Reconciler re-encola los `IN_PROGRESS` stale sin sumar otro (§6.6). Los deferidos por el breaker no hacen claim y no cuentan.
+- **Fencing token del claim.** Las transiciones posteriores al claim pueden condicionarse además a `started_at = <el valor escrito por el claim>`. Si el Reconciler re-encoló el job y otro Worker lo reclamó, las escrituras tardías del primero no aplican.
+- **Éxito atómico.** `succeedExecution` escribe `results` (upsert) y marca `SUCCEEDED` en una sola transacción y solo si se cumple la condición; nunca queda un resultado sin el estado que lo acompaña.
+- **Cursor del Reconciler.** Los registros sin ejecución del día se paginan por `(slot, id)`, el mismo orden del índice `(slot, id)` de `registries`.
+- **`dispatch_windows.started_at`.** Al re-procesar una ventana (lookback) se conserva el `started_at` original, para que la alarma "ventana `PROCESSING` con más de 10 min" no se reinicie con cada reintento.
+
+### Fidelidad de los adaptadores en memoria
+
+Los adaptadores reproducen la semántica de SQS que el diseño necesita, con estas simplificaciones (todas **a verificar** contra la documentación de SQS antes de implementar los adaptadores AWS):
+
+- **FIFO:** entrega como máximo un mensaje por grupo en cada `receive`. SQS puede devolver varios mensajes del mismo grupo en un solo receive, pero con `BatchSize = 1` (D6) eso no ocurre. La deduplicación tiene alcance por grupo, como en modo high-throughput (D5), y la ventana de 5 min no se extiende con los duplicados.
+- **Redrive:** un mensaje que ya se recibió `maxReceiveCount` veces se mueve a la DLQ en el siguiente receive, en lugar de entregarse.
+- **Receipt handle vencido:** un `delete` con un handle que ya no es el último no borra el mensaje y devuelve `false` (no lanza).
+- **Cola standard:** no inyecta entregas duplicadas ni desorden aleatorio. Los consumidores son idempotentes de todas formas (dedup de la FIFO más el claim).
+- **Atomicidad del repositorio:** cada operación condicional se ejecuta sincrónicamente antes de resolver la promesa, de modo que dos llamadas concurrentes nunca ganan las dos. Equivale a un `UPDATE ... WHERE` en PostgreSQL, pero no modela niveles de aislamiento ni deadlocks.

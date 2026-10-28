@@ -54,7 +54,7 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 | --------------------------------------------------------- | --------- |
 | 1. Esqueleto: tooling, CI, `defaults`, migraciones, seeds | ✅        |
 | 2. Núcleo puro                                            | ✅        |
-| 3. Adaptadores en memoria y reloj virtual                 | pendiente |
+| 3. Adaptadores en memoria y reloj virtual                 | ✅        |
 | 4. Dispatcher                                             | pendiente |
 | 5. Worker                                                 | pendiente |
 | 6. Requeue y Reconciler                                   | pendiente |
