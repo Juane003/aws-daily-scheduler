@@ -1,0 +1,8 @@
+dist/
+coverage/
+node_modules/
+cdk.out/
+package-lock.json
+docs/diagrams/*.excalidraw
+database/seeds/*.sql
+CLAUDE.md

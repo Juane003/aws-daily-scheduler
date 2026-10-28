@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+cdk.out/
+*.log
+.env
+.env.*
+!.env.example
+database/seeds/*.generated.sql
