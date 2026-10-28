@@ -29,6 +29,12 @@ Decisiones no cubiertas por CLAUDE.md, resueltas con la opción más simple (§1
 - **Éxito atómico.** `succeedExecution` escribe `results` (upsert) y marca `SUCCEEDED` en una sola transacción y solo si se cumple la condición; nunca queda un resultado sin el estado que lo acompaña.
 - **Cursor del Reconciler.** Los registros sin ejecución del día se paginan por `(slot, id)`, el mismo orden del índice `(slot, id)` de `registries`.
 - **`dispatch_windows.started_at`.** Al re-procesar una ventana (lookback) se conserva el `started_at` original, para que la alarma "ventana `PROCESSING` con más de 10 min" no se reinicie con cada reintento.
+- **Slot actual ya `COMPLETED`.** El Dispatcher saltea cualquier ventana `COMPLETED`, también la del minuto actual. Un tick duplicado no hace nada. Un registro agregado a un slot ya despachado no corre ese día hasta que lo encole el Reconciler.
+- **Recuperación de una ventana `PROCESSING`.** Al re-procesarla, el Dispatcher re-envía todas las filas del slot que siguen en `ENQUEUED`, no solo las que inserta: si no, un envío fallido después del `INSERT` dejaría el job sin encolar hasta que alguien lo detecte. Requiere la consulta `findEnqueuedExecutions(runDate, registryIds)`.
+- **`jobs_dispatched`.** Es la cantidad de registros habilitados del slot que tienen ejecución del día al completar la ventana, y se escribe (no se suma). No cuenta mensajes, así que un re-envío no lo infla.
+- **Reintentos de `SendMessageBatch`.** Hasta 3 reintentos de las entradas fallidas, sin espera entre intentos. Si se rechaza la llamada completa, cuenta como falla de todas sus entradas.
+- **El Dispatcher no lanza.** Un error de base de datos o de envío en una ventana se registra (`DispatchFailures` y un log de error) y el tick sigue con los demás slots; el lookback del próximo tick reintenta.
+- **Zona horaria.** `minuteOfDay` y `businessDate` usan `Intl.DateTimeFormat` con `businessTz` (con un camino directo para `UTC`). El comportamiento en los cambios de horario de verano se describe en `03-distribucion-diaria.md`.
 
 ### Fidelidad de los adaptadores en memoria
 

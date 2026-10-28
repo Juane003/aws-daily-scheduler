@@ -108,6 +108,17 @@ describe('InMemoryRepository: executions', () => {
     });
   });
 
+  it('finds which of the given registries are still ENQUEUED', async () => {
+    const repo = new InMemoryRepository();
+    await repo.insertExecutions(
+      ['1', '2', '3'].map((id) => ({ ...key(id), providerId: 'p1' })),
+      t0,
+    );
+    await repo.claimExecution(key('2'), t0, 360);
+    const rows = await repo.findEnqueuedExecutions(day, ['1', '2', '3', '4']);
+    expect(rows.map((e) => e.registryId)).toEqual(['1', '3']);
+  });
+
   it('claims ENQUEUED and RETRYING, counting the attempt', async () => {
     const repo = await withExecution();
     const claimed = await repo.claimExecution(key('1'), at(1), 360);

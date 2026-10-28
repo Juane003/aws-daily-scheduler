@@ -55,7 +55,7 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 | 1. Esqueleto: tooling, CI, `defaults`, migraciones, seeds | ✅        |
 | 2. Núcleo puro                                            | ✅        |
 | 3. Adaptadores en memoria y reloj virtual                 | ✅        |
-| 4. Dispatcher                                             | pendiente |
+| 4. Dispatcher                                             | ✅        |
 | 5. Worker                                                 | pendiente |
 | 6. Requeue y Reconciler                                   | pendiente |
 | 7. Integración en memoria                                 | pendiente |
@@ -67,5 +67,6 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 
 Ver [`docs/`](docs/) (en español). El índice (`docs/00-indice.md`) se completa en la fase 10.
 
+- [`docs/03-distribucion-diaria.md`](docs/03-distribucion-diaria.md)
 - [`docs/05-errores-reintentos-circuit-breaker.md`](docs/05-errores-reintentos-circuit-breaker.md)
 - [`docs/15-preguntas-abiertas.md`](docs/15-preguntas-abiertas.md)

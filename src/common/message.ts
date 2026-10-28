@@ -86,3 +86,35 @@ export function nextMessage(
 ): JobMessage {
   return { ...message, attempt, seq: message.seq + 1, reason };
 }
+
+/** First message of a job (Dispatcher, or Reconciler for a missing one): no attempts, `seq = 0`. */
+export function newJobMessage(
+  registryId: string,
+  providerId: string,
+  runDate: string,
+  reason: JobReason,
+  now: Date,
+): JobMessage {
+  return {
+    jobId: jobIdOf(registryId, runDate),
+    registryId,
+    providerId,
+    runDate,
+    attempt: 0,
+    seq: 0,
+    firstEnqueuedAt: now.toISOString(),
+    reason,
+  };
+}
+
+/** The FIFO send request for `message`: body plus group and deduplication ids. */
+export function toFifoMessage(
+  message: JobMessage,
+  shards: number,
+): { body: string; groupId: string; deduplicationId: string } {
+  return {
+    body: JSON.stringify(message),
+    groupId: groupId(message.providerId, message.registryId, shards),
+    deduplicationId: deduplicationId(message),
+  };
+}

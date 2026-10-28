@@ -131,6 +131,11 @@ export interface ExecutionRepository {
    */
   insertExecutions(rows: readonly NewExecution[], now: Date): Promise<string[]>;
   /**
+   * The rows among `registryIds` that are still `ENQUEUED` for `runDate`. The Dispatcher uses it
+   * to re-send a window that a previous run left in `PROCESSING` (inserted but maybe not sent).
+   */
+  findEnqueuedExecutions(runDate: string, registryIds: readonly string[]): Promise<Execution[]>;
+  /**
    * Worker claim (§6.2 step 4): `ENQUEUED | RETRYING`, or `IN_PROGRESS` with
    * `started_at < now - staleAfterS`, becomes `IN_PROGRESS` with `started_at = now` and
    * `attempt + 1`. Returns the updated row, or `undefined` when nothing matched (duplicate or done).
@@ -160,6 +165,10 @@ export interface DispatchWindowRepository {
   getDispatchWindow(runDate: string, slot: number): Promise<DispatchWindow | undefined>;
   /** `INSERT ... ON CONFLICT DO UPDATE SET status = 'PROCESSING'`; keeps the first `started_at`. */
   beginDispatchWindow(runDate: string, slot: number, now: Date): Promise<void>;
+  /**
+   * Marks the window `COMPLETED` with `jobs_dispatched` = the slot's registries that have an
+   * execution for the day (set, not added: a recovered window is not counted twice).
+   */
   completeDispatchWindow(
     runDate: string,
     slot: number,

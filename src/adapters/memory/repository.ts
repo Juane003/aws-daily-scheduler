@@ -133,6 +133,15 @@ export class InMemoryRepository implements Repository {
     return Promise.resolve(inserted);
   }
 
+  findEnqueuedExecutions(runDate: string, registryIds: readonly string[]): Promise<Execution[]> {
+    const out: Execution[] = [];
+    for (const id of registryIds) {
+      const row = this.executions.get(keyOf(id, runDate));
+      if (row?.status === 'ENQUEUED') out.push({ ...row });
+    }
+    return Promise.resolve(out);
+  }
+
   claimExecution(
     key: ExecutionKey,
     now: Date,
