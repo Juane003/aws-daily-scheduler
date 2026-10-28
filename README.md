@@ -56,7 +56,7 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 | 2. Núcleo puro                                            | ✅        |
 | 3. Adaptadores en memoria y reloj virtual                 | ✅        |
 | 4. Dispatcher                                             | ✅        |
-| 5. Worker                                                 | pendiente |
+| 5. Worker                                                 | ✅        |
 | 6. Requeue y Reconciler                                   | pendiente |
 | 7. Integración en memoria                                 | pendiente |
 | 8. Simulación de escala                                   | pendiente |
@@ -69,4 +69,5 @@ Ver [`docs/`](docs/) (en español). El índice (`docs/00-indice.md`) se completa
 
 - [`docs/03-distribucion-diaria.md`](docs/03-distribucion-diaria.md)
 - [`docs/05-errores-reintentos-circuit-breaker.md`](docs/05-errores-reintentos-circuit-breaker.md)
+- [`docs/06-idempotencia-y-consistencia.md`](docs/06-idempotencia-y-consistencia.md)
 - [`docs/15-preguntas-abiertas.md`](docs/15-preguntas-abiertas.md)

@@ -47,6 +47,30 @@ export interface StandardQueue {
   send(body: string, delaySeconds?: number): Promise<void>;
 }
 
+/** Request to the internal API (which runs 2 Lambdas per call). */
+export interface ApiRequest {
+  method: string;
+  endpoint: string;
+  body: unknown;
+  headers: Readonly<Record<string, string>>;
+  timeoutMs: number;
+}
+
+export interface ApiResponse {
+  status: number;
+  headers: Readonly<Record<string, string | undefined>>;
+  body: string;
+}
+
+/**
+ * HTTP client for the internal API. Resolves with any HTTP response (2xx, 4xx or 5xx) and rejects
+ * only when there is no response: network errors (`error.code`) or the timeout
+ * (`error.name = 'TimeoutError'` / `'AbortError'`).
+ */
+export interface InternalApi {
+  call(request: ApiRequest): Promise<ApiResponse>;
+}
+
 /** S3 for result payloads larger than `resultInlineMaxBytes` (D11). */
 export interface ObjectStore {
   put(key: string, body: string): Promise<void>;

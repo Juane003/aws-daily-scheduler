@@ -1,6 +1,6 @@
 # 05 — Errores, reintentos y circuit breaker
 
-> Implementación de referencia. Los algoritmos de este documento están implementados y testeados como funciones puras en `src/common/` (`error-classifier.ts`, `backoff.ts`, `circuit-breaker.ts`). El cableado con el Worker llega en la fase 5. Nada fue medido en AWS.
+> Implementación de referencia. Los algoritmos de este documento están implementados y testeados como funciones puras en `src/common/` (`error-classifier.ts`, `backoff.ts`, `circuit-breaker.ts`). El Worker (`src/core/execute/worker.ts`) los usa a través de `ProviderCircuits` (`src/core/execute/circuit.ts`), que persiste el breaker con compare-and-set. Nada fue medido en AWS.
 
 ## 1. Clasificación de errores
 

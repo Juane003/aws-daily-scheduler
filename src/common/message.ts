@@ -118,3 +118,44 @@ export function toFifoMessage(
     deduplicationId: deduplicationId(message),
   };
 }
+
+export const DEAD_LETTER_REASONS = [
+  'INVALID_MESSAGE',
+  'NON_RETRYABLE',
+  'EXHAUSTED',
+  'EXPIRED',
+] as const;
+export type DeadLetterReason = (typeof DEAD_LETTER_REASONS)[number];
+
+/**
+ * Body of a message the Worker sends to the DLQ: the job plus why it is there. Poison messages
+ * moved by the SQS redrive policy arrive as a bare {@link JobMessage} instead; the redrive tooling
+ * accepts both.
+ */
+export interface DeadLetter {
+  reason: DeadLetterReason;
+  error?: string;
+  failedAt: string;
+  message?: JobMessage;
+  /** The original body, when it could not be parsed. */
+  raw?: string;
+}
+
+/** FIFO send request for a dead letter. Invalid messages share one group, keyed by body hash. */
+export function toDeadLetterMessage(
+  letter: DeadLetter,
+  shards: number,
+): { body: string; groupId: string; deduplicationId: string } {
+  const body = JSON.stringify(letter);
+  if (letter.message === undefined) {
+    const digest = createHash('sha256')
+      .update(letter.raw ?? body, 'utf8')
+      .digest('hex');
+    return { body, groupId: 'INVALID_MESSAGE', deduplicationId: digest };
+  }
+  return {
+    body,
+    groupId: groupId(letter.message.providerId, letter.message.registryId, shards),
+    deduplicationId: deduplicationId(letter.message),
+  };
+}

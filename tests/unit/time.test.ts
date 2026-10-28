@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { chunk, mapLimit } from '../../src/common/concurrency.js';
-import { addDays, businessDate, minuteOfDay } from '../../src/common/time.js';
+import {
+  addDays,
+  businessDate,
+  endOfBusinessDay,
+  minuteOfDay,
+  startOfBusinessDay,
+} from '../../src/common/time.js';
 
 describe('business day', () => {
   it('maps a UTC instant to its minute and date', () => {
@@ -46,5 +52,22 @@ describe('concurrency helpers', () => {
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
     expect(chunk([], 10)).toEqual([]);
     expect(() => chunk([1], 0)).toThrow(RangeError);
+  });
+});
+
+describe('business day boundaries', () => {
+  it('starts and ends a UTC day at midnight UTC', () => {
+    expect(startOfBusinessDay('2026-03-01', 'UTC')).toEqual(new Date('2026-03-01T00:00:00Z'));
+    expect(endOfBusinessDay('2026-12-31', 'UTC')).toEqual(new Date('2027-01-01T00:00:00Z'));
+  });
+
+  it('uses the zone offset', () => {
+    const tz = 'America/Argentina/Buenos_Aires';
+    expect(startOfBusinessDay('2026-03-01', tz)).toEqual(new Date('2026-03-01T03:00:00Z'));
+    expect(endOfBusinessDay('2026-03-01', tz)).toEqual(new Date('2026-03-02T03:00:00Z'));
+    expect(startOfBusinessDay('2026-03-01', 'Asia/Kolkata')).toEqual(
+      new Date('2026-02-28T18:30:00Z'),
+    );
+    expect(() => startOfBusinessDay('nope', tz)).toThrow(RangeError);
   });
 });

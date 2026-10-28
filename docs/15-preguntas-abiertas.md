@@ -35,6 +35,17 @@ Decisiones no cubiertas por CLAUDE.md, resueltas con la opción más simple (§1
 - **Reintentos de `SendMessageBatch`.** Hasta 3 reintentos de las entradas fallidas, sin espera entre intentos. Si se rechaza la llamada completa, cuenta como falla de todas sus entradas.
 - **El Dispatcher no lanza.** Un error de base de datos o de envío en una ventana se registra (`DispatchFailures` y un log de error) y el tick sigue con los demás slots; el lookback del próximo tick reintenta.
 - **Zona horaria.** `minuteOfDay` y `businessDate` usan `Intl.DateTimeFormat` con `businessTz` (con un camino directo para `UTC`). El comportamiento en los cambios de horario de verano se describe en `03-distribucion-diaria.md`.
+- **Dueño de la prueba `HALF_OPEN`.** El `owner` es el `jobId`. Si se re-entrega el mensaje del job que tiene la prueba, ese mismo job la conserva sin otra escritura.
+- **Prueba con respuesta no reintentable.** Un 4xx no cuenta como falla para el breaker (§6.3), pero si llega en la llamada de prueba se registra como **éxito**: el proveedor respondió, así que está arriba. Sin esto, un proveedor que solo devuelve 4xx dejaría el circuito en `HALF_OPEN` sin dueño hasta que la prueba quede stale, y con un 401 sistemático no cerraría nunca.
+- **Prueba sin claim.** Si el job que ganó la prueba encuentra el claim tomado (duplicado), no llama ni reporta. La prueba queda sin dueño y otro Worker la toma cuando pasa `staleAfterS`.
+- **Escrituras del breaker best effort.** `ProviderCircuits` reintenta el compare-and-set hasta 5 veces releyendo la fila. Si pierde todas, loguea y sigue: la llamada a la API ya ocurrió y fallar el job causaría una segunda llamada.
+- **Orden de escrituras en el Worker.** En las ramas terminales se envía a la DLQ antes de escribir el estado; en las de reintento y defer se escribe `RETRYING` antes de enviar a `retry`. El porqué está en `06-idempotencia-y-consistencia.md`.
+- **Claim perdido.** Si otro Worker retomó el job por stale mientras este llamaba a la API, el resultado se descarta (`CLAIM_LOST`) y se hace ACK. El éxito o la falla igual se reportan al breaker, porque describen al proveedor.
+- **Registro inexistente o deshabilitado.** Si el registro se borró o se deshabilitó después del despacho, el job termina en `FAILED_NON_RETRYABLE` (`REGISTRY_NOT_FOUND` / `REGISTRY_DISABLED`) sin llamar a la API.
+- **Deadline sobre jobs terminados.** Un mensaje vencido de un job que ya terminó se descarta con ACK (no se manda a la DLQ).
+- **Sobre de la DLQ.** El Worker envía `{ reason, error, failedAt, message | raw }`. Los mensajes inválidos van al grupo `INVALID_MESSAGE` con el sha256 del body como dedup id.
+- **Métrica de credenciales.** Los 401/403 emiten `CredentialErrors{provider}` y un log de error; la alarma se define sobre esa métrica.
+- **Body de la respuesta.** Se guarda en `results.response` como JSON si parsea, y si no como un string JSON. La duración se mide con el puerto `Clock`.
 
 ### Fidelidad de los adaptadores en memoria
 

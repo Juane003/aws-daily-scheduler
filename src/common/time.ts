@@ -70,3 +70,25 @@ export function addDays(runDate: string, days: number): string {
 function formatDate(year: number, month: number, day: number): string {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
+
+/**
+ * The instant the business day `runDate` starts in `timeZone`. Resolves the zone offset by
+ * fixed-point iteration, which is exact for whole-minute offsets outside DST transitions.
+ */
+export function startOfBusinessDay(runDate: string, timeZone: string): Date {
+  const target = Date.parse(`${runDate}T00:00:00Z`);
+  if (Number.isNaN(target)) throw new RangeError(`invalid date: ${runDate}`);
+  let instant = target;
+  for (let i = 0; i < 3; i++) {
+    const p = zonedParts(new Date(instant), timeZone);
+    const wallClock = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+    if (wallClock === target) break;
+    instant -= wallClock - target;
+  }
+  return new Date(instant);
+}
+
+/** The instant the business day `runDate` ends (the start of the next one). */
+export function endOfBusinessDay(runDate: string, timeZone: string): Date {
+  return startOfBusinessDay(addDays(runDate, 1), timeZone);
+}
