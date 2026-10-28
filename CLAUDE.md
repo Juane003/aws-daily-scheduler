@@ -11,7 +11,7 @@ Este repo es una **implementación de referencia** (un blueprint arquitectónico
 
 **Qué incluye:**
 - Los algoritmos centrales en TypeScript: slot, dispatch con lookback, Worker (deadline, breaker, claim, clasificación y ramas de resultado), circuit breaker, clasificador de errores, backoff, Requeue y Reconciler.
-- Puertos (interfaces) para base de datos, colas, HTTP, almacenamiento de objetos y reloj.
+- Puertos (interfaces) para base de datos, colas, HTTP, almacenamiento de objetos, reloj, **logger y métricas**.
 - **Adaptadores en memoria** que reproducen la semántica que importa para el diseño:
   - FIFO con un mensaje en vuelo por `MessageGroupId`, deduplicación de 5 min, visibility timeout y redrive por `maxReceiveCount`;
   - cola standard con `DelaySeconds`;
@@ -121,7 +121,7 @@ provider_circuits(provider_id TEXT PK, state TEXT /* CLOSED | OPEN | HALF_OPEN *
 ```
 
 - **Retención:** configurable (default 13 meses). Las particiones viejas se eliminan con `DROP PARTITION`, nunca con `DELETE`.
-- **Día de negocio:** `BUSINESS_TZ` (default `UTC`). Es una pregunta abierta para el usuario; no asumir otro valor.
+- **Día de negocio:** `businessTz` (default `UTC`). Es una pregunta abierta para el usuario; no asumir otro valor.
 
 ---
 
@@ -132,7 +132,7 @@ interface JobMessage {
   jobId: string;          // `${registryId}#${runDate}`
   registryId: string;
   providerId: string;
-  runDate: string;        // YYYY-MM-DD en BUSINESS_TZ
+  runDate: string;        // YYYY-MM-DD en businessTz
   attempt: number;        // llamadas reales ya hechas a la API (las deferidas por el breaker NO cuentan)
   seq: number;            // cantidad de re-encolados (incluye deferidos); se usa en el dedup id
   firstEnqueuedAt: string;
@@ -148,7 +148,7 @@ Validar con `zod` en cada consumer. Un mensaje inválido va a la DLQ con `reason
 ## 6. Algoritmos
 
 ### 6.1 Dispatcher (por tick)
-1. `slot = minuteOfDay(now, BUSINESS_TZ)`.
+1. `slot = minuteOfDay(now, businessTz)`.
 2. **Lookback:** para `s` desde `slot-5` hasta `slot-1` (cruzando medianoche y ajustando `runDate`), si `dispatch_windows(runDate, s)` no existe o no está `COMPLETED`, procesar ese slot igual que el actual.
 3. `INSERT dispatch_windows ... ON CONFLICT DO UPDATE SET status = 'PROCESSING'`.
 4. Paginar `registries WHERE slot = s AND enabled` por keyset sobre `id`, en páginas de 1.000.
@@ -158,24 +158,24 @@ Validar con `zod` en cada consumer. Un mensaje inválido va a la DLQ con `reason
 
 ### 6.2 Worker
 1. Parsear y validar el mensaje.
-2. **Deadline:** si `now > endOf(runDate) + EXPIRY_GRACE` (default 6 h), marcar `FAILED_EXPIRED`, enviar a la DLQ y hacer ACK.
+2. **Deadline:** si `now > endOf(runDate) + expiryGraceH` (default 6 h), marcar `FAILED_EXPIRED`, enviar a la DLQ y hacer ACK.
 3. **Breaker** (`circuit.allow(providerId)`):
    - `OPEN` con `now < open_until`: enviar a `retry` con `delay = min(900, open_until - now + jitter(0..30 s))`, `seq + 1`, `reason = CIRCUIT_DEFER`, **sin incrementar `attempt`**. Marcar `RETRYING` con `next_attempt_at` y hacer ACK.
    - `OPEN` con `now >= open_until`: intentar la transición atómica a `HALF_OPEN` (`UPDATE ... WHERE state = 'OPEN' AND open_until <= now RETURNING`). Si se gana, este Worker hace la **llamada de prueba**; si no, se defiere como en el caso anterior.
    - `HALF_OPEN` con otro dueño: deferir.
-4. **Claim:** `UPDATE executions SET status = 'IN_PROGRESS', started_at = now() WHERE pk AND (status IN ('ENQUEUED', 'RETRYING') OR (status = 'IN_PROGRESS' AND started_at < now() - STALE_AFTER)) RETURNING attempt`. Si no actualiza filas, hacer ACK (es un duplicado o el job ya terminó).
-5. Cargar el registro y llamar a la API interna con timeout `HTTP_TIMEOUT_MS` y los headers `Idempotency-Key: jobId` y `X-Provider-Id`.
+4. **Claim:** `UPDATE executions SET status = 'IN_PROGRESS', started_at = now() WHERE pk AND (status IN ('ENQUEUED', 'RETRYING') OR (status = 'IN_PROGRESS' AND started_at < now() - staleAfterS)) RETURNING attempt`. Si no actualiza filas, hacer ACK (es un duplicado o el job ya terminó).
+5. Cargar el registro y llamar a la API interna con timeout `httpTimeoutMs` y los headers `Idempotency-Key: jobId` y `X-Provider-Id`.
 6. Clasificar el resultado (6.4) y actuar:
    - **Éxito:** escribir `results` (S3 si el payload supera 256 KB), `SUCCEEDED`, `circuit.recordSuccess`.
-   - **Reintentable:** `circuit.recordFailure`. Si `attempt + 1 >= MAX_ATTEMPTS` (default 8): `FAILED_EXHAUSTED` y DLQ. Si no: `RETRYING`, y enviar a `retry` con `delay = backoff(attempt + 1)`, respetando `Retry-After` si viene (con tope de 900).
+   - **Reintentable:** `circuit.recordFailure`. Si `attempt + 1 >= maxAttempts` (default 8): `FAILED_EXHAUSTED` y DLQ. Si no: `RETRYING`, y enviar a `retry` con `delay = backoff(attempt + 1)`, respetando `Retry-After` si viene (con tope de 900).
    - **No reintentable:** `FAILED_NON_RETRYABLE` y DLQ. **No** cuenta para el breaker.
 7. Todas las transiciones de estado son `UPDATE` condicionados al estado esperado.
 
 ### 6.3 Circuit breaker (`src/common/circuit-breaker.ts`)
-- **Parámetros:** `CB_FAILURE_THRESHOLD = 5` fallas reintentables consecutivas; `CB_BASE_COOLDOWN = 60 s`; `CB_MAX_COOLDOWN = 900 s`.
+- **Parámetros:** `cbFailureThreshold = 5` fallas reintentables consecutivas; `cbBaseCooldownS = 60`; `cbMaxCooldownS = 900`.
 - **CLOSED:** una falla incrementa `consecutive_failures` de forma atómica; al llegar al umbral pasa a `OPEN` con `open_until = now + cooldown`. Un éxito pone `consecutive_failures = 0`.
 - **HALF_OPEN:** si la prueba sale bien, pasa a `CLOSED` y `cooldown = base`. Si falla, pasa a `OPEN` con `cooldown = min(2 × cooldown, max)`.
-- Un dueño de `HALF_OPEN` que no reporta dentro de `STALE_AFTER` se considera perdido, y la fila vuelve a `OPEN` vencida.
+- Un dueño de `HALF_OPEN` que no reporta dentro de `staleAfterS` se considera perdido, y la fila vuelve a `OPEN` vencida.
 - Un proveedor sin fila se considera `CLOSED` y la fila se crea con upsert.
 - Emitir la métrica `CircuitStateChange{provider, from, to}` y loguear cada transición.
 - **Interfaz pura más adaptador:** la lógica de transición es una función pura `transition(state, event, now, config)`, testeable sin base de datos.
@@ -188,7 +188,7 @@ Validar con `zod` en cada consumer. Un mensaje inválido va a la DLQ con `reason
 | Throttling de Lambda / API Gateway de la API interna | RETRYABLE |
 | Errores de red: **usar `error.code`** (`ECONNRESET`, `ETIMEDOUT`, `ECONNREFUSED`, `EAI_AGAIN`, `EPIPE`, `UND_ERR_*`) y **`error.name`** `AbortError` / `TimeoutError` | RETRYABLE |
 | Resto de 4xx (400, 401, 403, 404, 409, 422, ...) | NON_RETRYABLE (401 y 403, además, disparan alarma de credenciales) |
-| Error desconocido | RETRYABLE, contando para `MAX_ATTEMPTS`. Ante la duda se reintenta acotado: es mejor que perder el job |
+| Error desconocido | RETRYABLE, contando para `maxAttempts`. Ante la duda se reintenta acotado: es mejor que perder el job |
 
 **Backoff:** `min(900, base × 2^(n-1))` con full jitter (`random(0, valor)`), con `base = 10 s`.
 
@@ -196,29 +196,34 @@ Validar con `zod` en cada consumer. Un mensaje inválido va a la DLQ con `reason
 Consume `retry` (standard, batch de 10, `ReportBatchItemFailures`), valida el mensaje y hace `SendMessage` a la FIFO con `MessageDeduplicationId = jobId#seq`. No toca la base de datos (el estado ya es `RETRYING`).
 
 ### 6.6 Reconciler (cada hora)
-1. **Stale:** `executions` en `IN_PROGRESS` con `started_at < now - STALE_AFTER` (default `2 × visibility timeout`). Pasarlas a `RETRYING` y re-encolarlas con `seq + 1`, sin sumar intento: el intento ya se contó al hacer el claim.
+1. **Stale:** `executions` en `IN_PROGRESS` con `started_at < now - staleAfterS` (default `2 × visibilityTimeoutS`). Pasarlas a `RETRYING` y re-encolarlas con `seq + 1`, sin sumar intento: el intento ya se contó al hacer el claim.
 2. **Faltantes:** para los slots del día con `slot < slotActual - 10`, buscar `registries` sin fila en `executions`. Insertarlos como `ENQUEUED` y encolarlos con `reason = RECONCILE`.
-3. **`ENQUEUED` viejos:** con `enqueued_at < now - ENQUEUED_STALE` (default 3 h), **solo reportar** en logs y métricas, sin re-encolar. La espera puede ser legítima por backlog del proveedor; la FIFO y el claim cubren duplicados si se re-encolaran.
+3. **`ENQUEUED` viejos:** con `enqueued_at < now - enqueuedStaleH` (default 3 h), **solo reportar** en logs y métricas, sin re-encolar. La espera puede ser legítima por backlog del proveedor; la FIFO y el claim cubren duplicados si se re-encolaran.
 4. Publicar `% completados del día`, conteos por estado y por proveedor.
-5. Procesar en páginas y con un límite de re-encolados por corrida (`RECONCILE_MAX_REQUEUE`), para no inundar la FIFO.
+5. Procesar en páginas y con un límite de re-encolados por corrida (`reconcileMaxRequeue`), para no inundar la FIFO.
 
 ---
 
-## 7. Configuración (variables de entorno con defaults)
-`BUSINESS_TZ=UTC`, `LOOKBACK_SLOTS=5`, `PROVIDER_SHARDS_K=1` (mapa por proveedor opcional en SSM), `HTTP_TIMEOUT_MS=10000`, `WORKER_TIMEOUT_S=30`, visibility de la FIFO = `6 × WORKER_TIMEOUT_S`, `MAX_ATTEMPTS=8`, `RETRY_BASE_S=10`, `CB_FAILURE_THRESHOLD=5`, `CB_BASE_COOLDOWN_S=60`, `CB_MAX_COOLDOWN_S=900`, `STALE_AFTER_S=360`, `EXPIRY_GRACE_H=6`, `ESM_MAX_CONCURRENCY=200`, `RESULT_INLINE_MAX_BYTES=262144`.
+## 7. Parámetros
+Un único objeto `defaults` exportado desde `src/common/config.ts`. Cada componente lo recibe por constructor y los tests pasan lo que necesitan cambiar (`{ ...defaults, maxAttempts: 2 }`). **No hay** lectura de variables de entorno, validación de esquema, SSM ni mapas por proveedor.
 
-**Restricción de timeouts:** `HTTP_TIMEOUT < WORKER_TIMEOUT < visibility timeout`. Validarla al iniciar y en un test.
+Valores por defecto: `businessTz = 'UTC'`, `lookbackSlots = 5`, `providerShards = 1`, `httpTimeoutMs = 10_000`, `workerTimeoutS = 30`, `visibilityTimeoutS = 180`, `maxAttempts = 8`, `retryBaseS = 10`, `maxDelayS = 900`, `cbFailureThreshold = 5`, `cbBaseCooldownS = 60`, `cbMaxCooldownS = 900`, `staleAfterS = 360`, `expiryGraceH = 6`, `enqueuedStaleH = 3`, `reconcileMaxRequeue = 10_000`, `resultInlineMaxBytes = 262_144`.
+
+La relación `httpTimeout < workerTimeout < visibilityTimeout` se cubre con un único test sobre `defaults`. En producción estos valores vendrían de variables de entorno definidas en la IaC; eso se menciona en la documentación y no se implementa.
 
 ---
 
 ## 8. Stack y convenciones
 - **Lenguaje:** TypeScript en modo `strict`, Node.js 20, ESM.
-- **Librerías:** `zod` y Powertools for AWS Lambda (Logger y Metrics, que funcionan localmente). AWS SDK v3 y `pg` solo si se agregan los adaptadores AWS opcionales.
+- **Librerías:** solo `zod` en runtime, más el tooling de desarrollo (TypeScript, Vitest o Jest, ESLint y Prettier). **Sin dependencias de AWS en el núcleo ni en los tests.** AWS SDK v3, `pg` y Powertools for AWS Lambda solo pueden aparecer dentro de `src/adapters/aws/` (opcional).
+- **Logs y métricas:** se emiten a través de los puertos `Logger` y `Metrics` (`src/common/telemetry.ts`).
+  - **Logger:** la implementación por defecto es un logger JSON propio y mínimo (~30 líneas) que escribe una línea por evento en stdout. En los tests se usa un logger en memoria que guarda los eventos para poder afirmarlos.
+  - **Métricas:** un recorder en memoria que acumula contadores y valores por nombre y dimensiones. Los tests lo usan para verificar, por ejemplo, que se emitió `CircuitStateChange`.
+  - **En producción** (diseño objetivo, documentado en `08-observabilidad.md`): esos puertos se implementarían con Powertools (Logger, Metrics en formato EMF y Tracer para X-Ray). El cambio queda acotado a un adaptador; el núcleo no se toca.
 - **IaC (opcional):** un **esqueleto** de AWS CDK v2 en `infra/` que muestra los recursos y su configuración clave (FIFO, ESM con `BatchSize = 1`, retry con su DLQ, Schedulers y alarmas) y que solo debe sintetizar. No se despliega. El diseño completo de los stacks se documenta en `02-arquitectura.md` y `12-ciclo-de-vida-de-desarrollo.md`.
 - **Arquitectura hexagonal liviana:** los handlers son finos, la lógica vive en `src/core/*` con puertos (interfaces), los adaptadores en memoria están en `src/adapters/memory/*` (obligatorios, se usan en los tests) y los adaptadores AWS en `src/adapters/aws/*` (opcionales).
 - **Código:** el código, los identificadores y los comentarios van en **inglés**. La **documentación** en `docs/` va en **español**.
 - **Logs:** JSON con `jobId`, `providerId`, `runDate`, `attempt`, `seq` y `reason` en cada línea relevante.
-- **Configuración:** sin secretos en código. Las credenciales de la base van por IAM auth a RDS Proxy o Secrets Manager.
 - **Lint y formato:** ESLint y Prettier. Commits con Conventional Commits.
 
 ### Estructura del repo
@@ -226,8 +231,8 @@ Consume `retry` (standard, batch de 10, `ReportBatchItemFailures`), valida el me
 src/
   handlers/{dispatcher,worker,requeue,reconciler}.ts
   core/{dispatch,execute,reconcile}/...
-  common/{slot,error-classifier,backoff,circuit-breaker,config,message,time}.ts
-  adapters/memory/{fifo-queue,standard-queue,repository,object-store,clock}.ts
+  common/{slot,error-classifier,backoff,circuit-breaker,config,message,time,telemetry}.ts
+  adapters/memory/{fifo-queue,standard-queue,repository,object-store,clock,logger,metrics}.ts
   adapters/aws/...      (opcional, "Not verified against AWS")
   simulation/{api-simulator,harness}.ts
 database/migrations/  database/seeds/
@@ -257,7 +262,7 @@ Antes de dar una tarea por terminada, correr `build`, `lint` y `test`, y que pas
   - un fallo parcial del batch deja la ventana en `PROCESSING`.
 - **Worker** (con dobles de los puertos):
   - éxito;
-  - reintentable antes y después de `MAX_ATTEMPTS`;
+  - reintentable antes y después de `maxAttempts`;
   - no reintentable;
   - breaker `OPEN`: defiere sin sumar intento;
   - llamada de prueba en `HALF_OPEN`;
@@ -278,7 +283,7 @@ Antes de dar una tarea por terminada, correr `build`, `lint` y `test`, y que pas
 ---
 
 ## 10. Observabilidad y seguridad
-En la implementación de referencia, las métricas y los logs se emiten con Powertools y se verifican en los tests. Las alarmas, el dashboard, el tracing y la seguridad son el **diseño objetivo**: se documentan (y, si existe, se esbozan en el esqueleto de CDK), pero no se despliegan.
+En la implementación de referencia, las métricas y los logs se emiten por los puertos `Logger` y `Metrics` (§8) y se verifican en los tests con sus versiones en memoria. Powertools, CloudWatch, X-Ray, las alarmas, el dashboard y la seguridad son el **diseño objetivo**: se documentan (y, si existe, se esbozan en el esqueleto de CDK), pero no se implementan ni se despliegan.
 
 - **Métricas** (namespace `Scheduler`):
   - `JobsDispatched`, `DispatchFailures`, `JobsSucceeded`, `JobsFailed{reason}`, `JobsDeferred{provider}`;
@@ -291,7 +296,7 @@ En la implementación de referencia, las métricas y los logs se emiten con Powe
   - una ventana `PROCESSING` con más de 10 min;
   - un breaker `OPEN` por más de 30 min;
   - errores 401/403.
-- **Tracing:** X-Ray mediante Powertools Tracer.
+- **Tracing (diseño objetivo):** X-Ray mediante Powertools Tracer. En la implementación de referencia alcanza con propagar `jobId` en cada log.
 - **Dashboard:** definido en CDK.
 - **Seguridad:**
   - Lambdas en subnets privadas multi-AZ, con VPC endpoints (SQS, S3, Secrets Manager, execute-api);
@@ -328,7 +333,7 @@ Cada documento incluye el **porqué** de cada decisión y sus trade-offs; no se 
 ## 12. Plan de ejecución (seguir este orden)
 Cada fase termina con `build`, `lint` y `test` en verde, los documentos de esa fase actualizados y un commit.
 
-1. **Esqueleto:** repo, tooling, CI (build, lint y test), config validada, migraciones y seeds.
+1. **Esqueleto:** repo, tooling, CI (build, lint y test), `defaults`, migraciones y seeds.
 2. **Núcleo puro:** slot, clasificador, backoff, transiciones del breaker y contrato de mensajes, más sus tests unitarios.
 3. **Adaptadores en memoria y reloj virtual**, con sus tests de semántica.
 4. **Dispatcher:** dispatch y lookback, con tests.
@@ -347,7 +352,8 @@ Cada fase termina con `build`, `lint` y `test` en verde, los documentos de esa f
 - Si una decisión no está cubierta acá, elegir la opción más simple, documentarla en `15-preguntas-abiertas.md` o en un ADR y seguir.
 - No cambiar las decisiones D1 a D12 en silencio.
 - No inventar números de AWS (límites, precios). Si no se verificaron, marcarlos como "a verificar" con la fuente sugerida.
-- No usar `any` en TypeScript. No usar `console.log` suelto: se usa el Logger de Powertools.
+- No usar `any` en TypeScript. No usar `console.log` suelto: todo log pasa por el puerto `Logger`.
+- No agregar dependencias de AWS (SDK, Powertools, `pg`) fuera de `src/adapters/aws/`. Si una necesidad parece requerirlas en el núcleo, es señal de que falta un puerto.
 - Cada rama de error del Worker necesita su test.
 - Mantener el README con una descripción corta, una nota visible de que es una **implementación de referencia** (qué demuestra y qué queda fuera, según §0), el diagrama, cómo correr localmente y un índice a `docs/`.
 - Ante una tarea que solo tendría sentido con AWS real (deploy, medir latencias o costos reales), no simularla como si fuera real: documentarla como diseño objetivo o como trabajo futuro.

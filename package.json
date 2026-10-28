@@ -19,8 +19,6 @@
     "seed:generate": "tsx scripts/generate-seeds.ts"
   },
   "dependencies": {
-    "@aws-lambda-powertools/logger": "^2.36.0",
-    "@aws-lambda-powertools/metrics": "^2.36.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

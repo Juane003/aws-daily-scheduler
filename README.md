@@ -50,18 +50,18 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 
 ## Estado
 
-| Fase (CLAUDE.md §12)                                           | Estado    |
-| -------------------------------------------------------------- | --------- |
-| 1. Esqueleto: tooling, CI, config validada, migraciones, seeds | ✅        |
-| 2. Núcleo puro                                                 | pendiente |
-| 3. Adaptadores en memoria y reloj virtual                      | pendiente |
-| 4. Dispatcher                                                  | pendiente |
-| 5. Worker                                                      | pendiente |
-| 6. Requeue y Reconciler                                        | pendiente |
-| 7. Integración en memoria                                      | pendiente |
-| 8. Simulación de escala                                        | pendiente |
-| 9. Esqueleto CDK (opcional)                                    | pendiente |
-| 10. Documentación final                                        | pendiente |
+| Fase (CLAUDE.md §12)                                      | Estado    |
+| --------------------------------------------------------- | --------- |
+| 1. Esqueleto: tooling, CI, `defaults`, migraciones, seeds | ✅        |
+| 2. Núcleo puro                                            | pendiente |
+| 3. Adaptadores en memoria y reloj virtual                 | pendiente |
+| 4. Dispatcher                                             | pendiente |
+| 5. Worker                                                 | pendiente |
+| 6. Requeue y Reconciler                                   | pendiente |
+| 7. Integración en memoria                                 | pendiente |
+| 8. Simulación de escala                                   | pendiente |
+| 9. Esqueleto CDK (opcional)                               | pendiente |
+| 10. Documentación final                                   | pendiente |
 
 ## Documentación
 
