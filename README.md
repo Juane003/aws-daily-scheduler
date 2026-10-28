@@ -55,29 +55,64 @@ npm run seed:generate -- --rows 1000 --providers 50 --hot-provider 0.2 \
   --out database/seeds/registries.generated.sql
 ```
 
-Las migraciones están en [`database/migrations/`](database/migrations/) (numeradas e idempotentes).
+Las migraciones están en [`database/migrations/`](database/migrations/) (numeradas e idempotentes; no se corrieron contra un PostgreSQL real).
+
+Redrive de la DLQ (offline, sobre los mensajes exportados; ver [`docs/14-runbook.md`](docs/14-runbook.md)):
+
+```bash
+npm run redrive -- --in dlq-bodies.jsonl --out redrive/2026-03-01
+```
+
+## Estructura
+
+```
+src/
+  common/      lógica pura: slot, clasificador, backoff, breaker, mensajes, tiempo, config, telemetría
+  core/        Dispatcher, Worker, Requeue, Reconciler y los puertos (ports.ts)
+  handlers/    los 4 handlers Lambda (finos: solo cablean)
+  adapters/memory/  SQS FIFO y standard, PostgreSQL, S3, reloj, logger y métricas en memoria
+  simulation/  simulador de la API interna, harness del pipeline y simulación de escala
+database/      migraciones y seeds
+scripts/       generador de seeds, simulación y redrive de la DLQ
+tests/         unit/ · integration/ (pipeline completo) · simulation/ (escala reducida)
+docs/          documentación, ADRs, diagrama y reportes de simulación
+```
 
 ## Estado
 
-| Fase (CLAUDE.md §12)                                      | Estado    |
-| --------------------------------------------------------- | --------- |
-| 1. Esqueleto: tooling, CI, `defaults`, migraciones, seeds | ✅        |
-| 2. Núcleo puro                                            | ✅        |
-| 3. Adaptadores en memoria y reloj virtual                 | ✅        |
-| 4. Dispatcher                                             | ✅        |
-| 5. Worker                                                 | ✅        |
-| 6. Requeue y Reconciler                                   | ✅        |
-| 7. Integración en memoria                                 | ✅        |
-| 8. Simulación de escala                                   | ✅        |
-| 9. Esqueleto CDK (opcional)                               | pendiente |
-| 10. Documentación final                                   | pendiente |
+| Fase (CLAUDE.md §12)                                      | Estado                                    |
+| --------------------------------------------------------- | ----------------------------------------- |
+| 1. Esqueleto: tooling, CI, `defaults`, migraciones, seeds | ✅                                        |
+| 2. Núcleo puro                                            | ✅                                        |
+| 3. Adaptadores en memoria y reloj virtual                 | ✅                                        |
+| 4. Dispatcher                                             | ✅                                        |
+| 5. Worker                                                 | ✅                                        |
+| 6. Requeue y Reconciler                                   | ✅                                        |
+| 7. Integración en memoria                                 | ✅                                        |
+| 8. Simulación de escala                                   | ✅                                        |
+| 9. Esqueleto CDK y adaptadores AWS (opcional)             | omitida (diseño en `docs/02` y `docs/12`) |
+| 10. Documentación final                                   | ✅                                        |
 
 ## Documentación
 
-Ver [`docs/`](docs/) (en español). El índice (`docs/00-indice.md`) se completa en la fase 10.
+En español, en [`docs/`](docs/). Empezar por el [índice y resumen ejecutivo](docs/00-indice.md).
 
-- [`docs/03-distribucion-diaria.md`](docs/03-distribucion-diaria.md)
-- [`docs/04-concurrencia-por-proveedor.md`](docs/04-concurrencia-por-proveedor.md)
-- [`docs/05-errores-reintentos-circuit-breaker.md`](docs/05-errores-reintentos-circuit-breaker.md)
-- [`docs/06-idempotencia-y-consistencia.md`](docs/06-idempotencia-y-consistencia.md)
-- [`docs/15-preguntas-abiertas.md`](docs/15-preguntas-abiertas.md)
+| Documento                                                                                   | Tema                                                   |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| [00 — Índice y resumen ejecutivo](docs/00-indice.md)                                        | Resumen de una página y mapa de la documentación       |
+| [01 — Contexto y supuestos](docs/01-contexto-y-supuestos.md)                                | Enunciado, alcance de la implementación, supuestos     |
+| [02 — Arquitectura](docs/02-arquitectura.md)                                                | Diagrama, componentes, secuencias                      |
+| [03 — Distribución diaria](docs/03-distribucion-diaria.md)                                  | Slot wheel, Dispatcher, lookback                       |
+| [04 — Concurrencia por proveedor](docs/04-concurrencia-por-proveedor.md)                    | FIFO por proveedor, techo diario, simulación de escala |
+| [05 — Errores, reintentos y circuit breaker](docs/05-errores-reintentos-circuit-breaker.md) | Clasificación, backoff, `retry`, breaker               |
+| [06 — Idempotencia y consistencia](docs/06-idempotencia-y-consistencia.md)                  | Deduplicación, escenarios de falla, Reconciler         |
+| [07 — Modelo de datos](docs/07-modelo-de-datos.md)                                          | DDL, índices, particiones, retención                   |
+| [08 — Observabilidad](docs/08-observabilidad.md)                                            | Métricas, alarmas, logs                                |
+| [09 — Seguridad](docs/09-seguridad.md)                                                      | Red, IAM, cifrado, secretos                            |
+| [10 — Capacidad y costos](docs/10-capacidad-y-costos.md)                                    | Dimensionamiento y costo estimado para 1M y 10M        |
+| [11 — Alternativas descartadas](docs/11-alternativas-descartadas.md)                        | Qué más se consideró y por qué no                      |
+| [12 — Ciclo de vida de desarrollo](docs/12-ciclo-de-vida-de-desarrollo.md)                  | Branching, CI/CD, ambientes, rollback                  |
+| [13 — Plan de desarrollo](docs/13-plan-de-desarrollo.md)                                    | Fases con entregables y Definition of Done             |
+| [14 — Runbook](docs/14-runbook.md)                                                          | Alarmas y operaciones manuales                         |
+| [15 — Preguntas abiertas](docs/15-preguntas-abiertas.md)                                    | Preguntas para el negocio y decisiones menores         |
+| [ADRs](docs/adr/)                                                                           | Una por decisión D1–D12                                |

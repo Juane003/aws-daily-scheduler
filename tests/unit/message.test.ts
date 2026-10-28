@@ -3,8 +3,10 @@ import {
   deduplicationId,
   groupId,
   jobIdOf,
+  newJobMessage,
   nextMessage,
   parseJobMessage,
+  readDeadLetter,
   type JobMessage,
 } from '../../src/common/message.js';
 
@@ -114,5 +116,42 @@ describe('nextMessage', () => {
     const original = { ...valid };
     nextMessage(original, 'RETRY', 1);
     expect(original).toEqual(valid);
+  });
+});
+
+describe('readDeadLetter', () => {
+  const job = newJobMessage('7', 'p1', '2026-03-01', 'DISPATCH', new Date('2026-03-01T00:07:00Z'));
+
+  it('reads the Worker envelope', () => {
+    const body = JSON.stringify({
+      reason: 'EXHAUSTED',
+      error: 'HTTP_503',
+      failedAt: 'x',
+      message: job,
+    });
+    expect(readDeadLetter(body)).toEqual({ kind: 'JOB', message: job, reason: 'EXHAUSTED' });
+  });
+
+  it('reads a bare job moved by the redrive policy as POISON', () => {
+    expect(readDeadLetter(JSON.stringify(job))).toEqual({
+      kind: 'JOB',
+      message: job,
+      reason: 'POISON',
+    });
+  });
+
+  it('reports unreadable bodies', () => {
+    expect(readDeadLetter('nope')).toMatchObject({ kind: 'UNREADABLE', reason: 'POISON' });
+    expect(readDeadLetter('{"a":1}')).toMatchObject({ kind: 'UNREADABLE', reason: 'POISON' });
+    expect(
+      readDeadLetter(
+        JSON.stringify({ reason: 'INVALID_MESSAGE', error: 'bad', failedAt: 'x', raw: '?' }),
+      ),
+    ).toEqual({ kind: 'UNREADABLE', reason: 'INVALID_MESSAGE', error: 'bad' });
+    expect(readDeadLetter(JSON.stringify({ reason: 'WEIRD', failedAt: 'x' }))).toMatchObject({
+      kind: 'UNREADABLE',
+      reason: 'INVALID_MESSAGE',
+      error: 'no job message in envelope',
+    });
   });
 });

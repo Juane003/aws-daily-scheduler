@@ -159,3 +159,31 @@ export function toDeadLetterMessage(
     deduplicationId: deduplicationId(letter.message),
   };
 }
+
+export type DeadLetterContents =
+  | { kind: 'JOB'; message: JobMessage; reason: DeadLetterReason | 'POISON' }
+  | { kind: 'UNREADABLE'; reason: DeadLetterReason | 'POISON'; error: string };
+
+/**
+ * Reads a DLQ body in either format: the Worker's {@link DeadLetter} envelope, or a bare
+ * {@link JobMessage} moved by the SQS redrive policy (`reason = 'POISON'`).
+ */
+export function readDeadLetter(body: string): DeadLetterContents {
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch (error) {
+    return { kind: 'UNREADABLE', reason: 'POISON', error: `invalid JSON: ${String(error)}` };
+  }
+  if (typeof value === 'object' && value !== null && 'reason' in value && 'failedAt' in value) {
+    const letter = value as Partial<DeadLetter>;
+    const reason = DEAD_LETTER_REASONS.find((r) => r === letter.reason) ?? 'INVALID_MESSAGE';
+    const parsed = parseJobMessage(letter.message);
+    if (parsed.ok) return { kind: 'JOB', message: parsed.message, reason };
+    return { kind: 'UNREADABLE', reason, error: letter.error ?? 'no job message in envelope' };
+  }
+  const parsed = parseJobMessage(value);
+  return parsed.ok
+    ? { kind: 'JOB', message: parsed.message, reason: 'POISON' }
+    : { kind: 'UNREADABLE', reason: 'POISON', error: parsed.error };
+}

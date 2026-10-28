@@ -17,7 +17,8 @@
     "test:integration": "vitest run tests/integration",
     "test:coverage": "vitest run --coverage",
     "seed:generate": "tsx scripts/generate-seeds.ts",
-    "simulate": "tsx scripts/simulate.ts"
+    "simulate": "tsx scripts/simulate.ts",
+    "redrive": "tsx scripts/redrive-dlq.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"
