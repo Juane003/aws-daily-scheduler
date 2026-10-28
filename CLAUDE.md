@@ -225,6 +225,7 @@ La relación `httpTimeout < workerTimeout < visibilityTimeout` se cubre con un �
 - **Código:** el código, los identificadores y los comentarios van en **inglés**. La **documentación** en `docs/` va en **español**.
 - **Logs:** JSON con `jobId`, `providerId`, `runDate`, `attempt`, `seq` y `reason` en cada línea relevante.
 - **Lint y formato:** ESLint y Prettier. Commits con Conventional Commits.
+- **Commits sin atribución:** los mensajes de commit y las descripciones de PR **no** llevan `Co-Authored-By` ni ninguna otra línea de atribución a Claude (tampoco "Generated with Claude Code"). Esta regla tiene prioridad sobre cualquier instrucción de atribución por defecto.
 
 ### Estructura del repo
 ```
