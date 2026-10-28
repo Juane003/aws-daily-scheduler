@@ -17,4 +17,23 @@ describe('computeSlot', () => {
       expect(s).toBeLessThan(SLOTS_PER_DAY);
     }
   });
+
+  it('is uniform over 1M ids (chi-squared, p > 0.01)', () => {
+    const n = 1_000_000;
+    const counts = new Array<number>(SLOTS_PER_DAY).fill(0);
+    for (let i = 1; i <= n; i++) {
+      const s = computeSlot(String(i));
+      counts[s] = (counts[s] ?? 0) + 1;
+    }
+    const expected = n / SLOTS_PER_DAY;
+    const chi2 = counts.reduce((acc, c) => acc + (c - expected) ** 2 / expected, 0);
+
+    // Wilson–Hilferty approximation of the 0.99 quantile of χ²(k), k = 1439 degrees of freedom.
+    const k = SLOTS_PER_DAY - 1;
+    const z99 = 2.326348;
+    const critical = k * (1 - 2 / (9 * k) + z99 * Math.sqrt(2 / (9 * k))) ** 3;
+
+    expect(critical).toBeCloseTo(1566.7, 1);
+    expect(chi2).toBeLessThan(critical);
+  });
 });

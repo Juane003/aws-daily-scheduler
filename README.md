@@ -53,7 +53,7 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 | Fase (CLAUDE.md §12)                                      | Estado    |
 | --------------------------------------------------------- | --------- |
 | 1. Esqueleto: tooling, CI, `defaults`, migraciones, seeds | ✅        |
-| 2. Núcleo puro                                            | pendiente |
+| 2. Núcleo puro                                            | ✅        |
 | 3. Adaptadores en memoria y reloj virtual                 | pendiente |
 | 4. Dispatcher                                             | pendiente |
 | 5. Worker                                                 | pendiente |
@@ -67,4 +67,5 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 
 Ver [`docs/`](docs/) (en español). El índice (`docs/00-indice.md`) se completa en la fase 10.
 
+- [`docs/05-errores-reintentos-circuit-breaker.md`](docs/05-errores-reintentos-circuit-breaker.md)
 - [`docs/15-preguntas-abiertas.md`](docs/15-preguntas-abiertas.md)
