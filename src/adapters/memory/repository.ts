@@ -80,12 +80,17 @@ export class InMemoryRepository implements Repository {
 
   findRegistriesWithoutExecution(
     runDate: string,
+    slotFrom: number,
     slotBefore: number,
     after: SlotCursor | null,
     limit: number,
   ): Promise<Registry[]> {
     const out: Registry[] = [];
-    for (let slot = after?.slot ?? 0; slot < slotBefore && out.length < limit; slot++) {
+    for (
+      let slot = Math.max(slotFrom, after?.slot ?? 0);
+      slot < slotBefore && out.length < limit;
+      slot++
+    ) {
       const ids = this.bySlot.get(slot) ?? [];
       const start = after !== null && slot === after.slot ? upperBound(ids, after.id) : 0;
       for (let i = start; i < ids.length && out.length < limit; i++) {

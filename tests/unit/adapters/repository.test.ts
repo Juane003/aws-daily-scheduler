@@ -69,13 +69,15 @@ describe('InMemoryRepository: registries', () => {
     ]);
     await repo.insertExecutions([{ ...key('2'), providerId: 'p0' }], t0);
 
-    const first = await repo.findRegistriesWithoutExecution(day, 3, null, 2);
+    const first = await repo.findRegistriesWithoutExecution(day, 0, 3, null, 2);
     expect(first.map((r) => r.id)).toEqual(['1', '3']);
-    const rest = await repo.findRegistriesWithoutExecution(day, 3, { slot: 1, id: '3' }, 10);
+    const rest = await repo.findRegistriesWithoutExecution(day, 0, 3, { slot: 1, id: '3' }, 10);
     expect(rest.map((r) => r.id)).toEqual(['5']);
     // Another day has no executions at all.
-    const other = await repo.findRegistriesWithoutExecution('2026-03-02', 1, null, 10);
+    const other = await repo.findRegistriesWithoutExecution('2026-03-02', 0, 1, null, 10);
     expect(other.map((r) => r.id)).toEqual(['1', '2']);
+    const tail = await repo.findRegistriesWithoutExecution(day, 2, 4, null, 10);
+    expect(tail.map((r) => r.id)).toEqual(['5', '6']);
   });
 
   it('returns copies', async () => {

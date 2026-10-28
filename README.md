@@ -58,7 +58,7 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 | 4. Dispatcher                                             | ✅        |
 | 5. Worker                                                 | ✅        |
 | 6. Requeue y Reconciler                                   | ✅        |
-| 7. Integración en memoria                                 | pendiente |
+| 7. Integración en memoria                                 | ✅        |
 | 8. Simulación de escala                                   | pendiente |
 | 9. Esqueleto CDK (opcional)                               | pendiente |
 | 10. Documentación final                                   | pendiente |
@@ -68,6 +68,7 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 Ver [`docs/`](docs/) (en español). El índice (`docs/00-indice.md`) se completa en la fase 10.
 
 - [`docs/03-distribucion-diaria.md`](docs/03-distribucion-diaria.md)
+- [`docs/04-concurrencia-por-proveedor.md`](docs/04-concurrencia-por-proveedor.md)
 - [`docs/05-errores-reintentos-circuit-breaker.md`](docs/05-errores-reintentos-circuit-breaker.md)
 - [`docs/06-idempotencia-y-consistencia.md`](docs/06-idempotencia-y-consistencia.md)
 - [`docs/15-preguntas-abiertas.md`](docs/15-preguntas-abiertas.md)

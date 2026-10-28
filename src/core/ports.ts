@@ -88,11 +88,12 @@ export interface RegistryRepository {
    */
   listRegistriesBySlot(slot: number, after: string | null, limit: number): Promise<Registry[]>;
   /**
-   * Enabled registries with `slot < slotBefore` and no `executions` row for `runDate`, ordered by
-   * `(slot, id)` and paginated with a keyset cursor (Reconciler, §6.6 step 2).
+   * Enabled registries with `slotFrom <= slot < slotBefore` and no `executions` row for `runDate`,
+   * ordered by `(slot, id)` and paginated with a keyset cursor (Reconciler, §6.6 step 2).
    */
   findRegistriesWithoutExecution(
     runDate: string,
+    slotFrom: number,
     slotBefore: number,
     after: SlotCursor | null,
     limit: number,

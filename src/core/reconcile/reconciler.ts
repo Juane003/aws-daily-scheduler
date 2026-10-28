@@ -27,13 +27,19 @@ import type {
  * 4. Publishes completion and per-status / per-provider counts.
  *
  * Both requeue steps share `reconcileMaxRequeue` per run, so a big incident cannot flood the FIFO.
- * The previous business day is included while its jobs can still run (`expiryGraceH`), so misses
- * just before midnight are covered too.
+ * The tail of the previous business day is included while its jobs can still run
+ * (`expiryGraceH`), so misses just before midnight are covered too.
  */
 
 export const RECONCILE_PAGE_SIZE = 1000;
 /** Slots this close to the current minute are left to the Dispatcher and its lookback. */
 export const MISSING_SLOT_MARGIN = 10;
+/**
+ * Slots of the previous day still checked after midnight: the ones the last run of that day
+ * (hourly, at most 60 minutes before midnight) could not reach yet. Checking the whole previous
+ * day would create yesterday's jobs for registries that only exist since today.
+ */
+export const PREVIOUS_DAY_TAIL_SLOTS = 60 + MISSING_SLOT_MARGIN;
 
 export type ReconcileConfig = Pick<
   Config,
@@ -74,10 +80,12 @@ export class Reconciler {
     const yesterday = addDays(today, -1);
     const graceEnd =
       endOfBusinessDay(yesterday, config.businessTz).getTime() + config.expiryGraceH * 3_600_000;
-    // [runDate, slots below which a registry should already have an execution]
-    const days: [string, number][] = [];
-    if (now.getTime() <= graceEnd) days.push([yesterday, SLOTS_PER_DAY]);
-    days.push([today, minuteOfDay(now, config.businessTz) - MISSING_SLOT_MARGIN]);
+    // [runDate, slotFrom, slotBefore]: the slots whose registries should have an execution by now.
+    const days: [string, number, number][] = [];
+    if (now.getTime() <= graceEnd) {
+      days.push([yesterday, SLOTS_PER_DAY - PREVIOUS_DAY_TAIL_SLOTS, SLOTS_PER_DAY]);
+    }
+    days.push([today, 0, minuteOfDay(now, config.businessTz) - MISSING_SLOT_MARGIN]);
 
     const budget = { remaining: config.reconcileMaxRequeue };
     const summary: ReconcileSummary = {
@@ -95,8 +103,8 @@ export class Reconciler {
       summary.staleRequeued += stale.sent;
       summary.sendFailures += stale.failed;
     }
-    for (const [runDate, slotBefore] of days) {
-      const missing = await this.requeueMissing(runDate, slotBefore, now, budget);
+    for (const [runDate, slotFrom, slotBefore] of days) {
+      const missing = await this.requeueMissing(runDate, slotFrom, slotBefore, now, budget);
       summary.missingRequeued += missing.sent;
       summary.sendFailures += missing.failed;
     }
@@ -166,6 +174,7 @@ export class Reconciler {
 
   private async requeueMissing(
     runDate: string,
+    slotFrom: number,
     slotBefore: number,
     now: Date,
     budget: { remaining: number },
@@ -176,6 +185,7 @@ export class Reconciler {
     for (let after: SlotCursor | null = null; slotBefore > 0 && budget.remaining > 0;) {
       const page = await repository.findRegistriesWithoutExecution(
         runDate,
+        slotFrom,
         slotBefore,
         after,
         Math.min(RECONCILE_PAGE_SIZE, budget.remaining),

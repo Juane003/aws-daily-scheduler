@@ -175,7 +175,8 @@ describe('Reconciler: missing executions', () => {
   });
 
   it('covers the previous day during the expiry grace period only', async () => {
-    const registries = [registry('1', 1439)];
+    // Slot 500 of the previous day is not in its tail: an earlier run of that day owned it.
+    const registries = [registry('1', 1439), registry('2', 500)];
     const early = setup(at('01:00', '2026-03-02'), registries);
     expect(await early.reconcile()).toMatchObject({
       runDates: ['2026-03-01', '2026-03-02'],
