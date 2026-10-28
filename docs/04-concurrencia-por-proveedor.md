@@ -56,7 +56,27 @@ techo diario = 86.400 s / latencia media (s)
 
 llamadas por día. Con 1 s de latencia son 86.400 llamadas; con 3 s, 28.800. Las dos Lambdas que ejecuta la API interna por llamada entran en esa latencia. Un proveedor con más registros que su techo **no termina en el día**: sus jobs se acumulan en la FIFO (`ENQUEUED` viejos en el reporte del Reconciler) y los que pasan el deadline terminan `FAILED_EXPIRED`.
 
-La simulación de escala (fase 8, `npm run simulate`) cuantifica este efecto con un proveedor caliente y documenta los resultados en este mismo documento.
+### Simulación de escala: 1M de registros con un proveedor caliente
+
+`npm run simulate -- --rows 1000000 --providers 2000 --hot-provider 0.2` corre un día completo del pipeline sobre el reloj virtual. Es una **simulación** con adaptadores en memoria y una API simulada (latencia uniforme 200–1.000 ms, media 0,6 s; 1% de 5xx; 0,5% de 4xx), **no un benchmark de AWS**. Los reportes completos están en [`simulacion/`](simulacion/).
+
+| Proveedor caliente (`provider-00001`, 199.942 registros) | `MaximumConcurrency = 100` | `MaximumConcurrency = 1.000` |
+| -------------------------------------------------------- | -------------------------- | ---------------------------- |
+| Techo `86.400 / 0,6 s`                                   | 144.000                    | 144.000                      |
+| Llamadas iniciadas dentro del día                        | 138.339                    | 144.056                      |
+| Tiempo ocupado en llamadas dentro del día                | 96,2%                      | 100%                         |
+| Exitosos dentro del día                                  | 136.213                    | 141.888                      |
+| Exitosos en total (con las 6 h de gracia)                | 171.746                    | 177.404                      |
+| Vencidos (`FAILED_EXPIRED`)                              | 27.320                     | 21.643                       |
+| Mayor demora de un job                                   | 18,05 h                    | 20,18 h                      |
+
+Qué muestra:
+
+- **El techo es real y la fórmula lo predice.** Con el proveedor ocupado el 100% del tiempo, las llamadas del día (144.056) coinciden con `86.400 / latencia media`. Un proveedor por encima de su techo no termina: el backlog crece todo el día, los jobs llegan a esperar 18 h y los que pasan el deadline (fin del día + 6 h) terminan `FAILED_EXPIRED`, visibles en la DLQ.
+- **El proveedor caliente no afecta a los demás.** Los otros 1.999 proveedores terminan cada job con una demora p95 de 14 s desde que se encola (máximo 55 s) y su último job del día termina a las 23:59. Es la ventaja de un grupo por proveedor: el backlog de uno no bloquea a otros grupos.
+- **Hallazgo: la ráfaga de cada minuto le resta capacidad al proveedor caliente.** Con `MaximumConcurrency = 100`, el proveedor caliente quedó ocioso el 3,8% del día a pesar de tener backlog: unos 2,3 s al comienzo de cada minuto. El Dispatcher encola los ~694 jobs del minuto de una vez, ~600 grupos quedan listos al mismo tiempo y, con 100 Workers como máximo, el grupo caliente espera su turno detrás de ellos. Con 1.000 el efecto desaparece. Mitigaciones posibles: dimensionar `MaximumConcurrency` para la ráfaga y no para el promedio (~7 llamadas en curso), o repartir los envíos dentro del minuto. Que SQS FIFO reparta los grupos listos con el mismo orden que el adaptador en memoria (round-robin) es **a verificar**: la documentación de SQS no garantiza un orden entre grupos.
+
+**Qué hacer con un proveedor caliente:** si admite concurrencia, sharding `k` (abajo); si no, el problema no se resuelve repartiendo mejor en el día, porque ya está ocupado todo el día: hay que negociar más capacidad, bajar la latencia o aceptar una frecuencia menor que diaria para ese proveedor. Detectarlo es simple: `EnqueuedStale` del Reconciler y `PendingByProvider` crecen durante el día.
 
 ## Sharding `k`: relajar la garantía de forma explícita
 

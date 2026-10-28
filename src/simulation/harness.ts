@@ -94,6 +94,11 @@ export interface HarnessOptions {
   logger?: Logger;
   /** Offset of the hourly Reconciler run within the hour. */
   reconcileOffsetMs?: number;
+  /**
+   * No Dispatcher tick or Reconciler run is scheduled at or after this instant. Lets a run cover a
+   * single business day: the queues keep draining, but the next day is never dispatched.
+   */
+  schedulesUntil?: Date | string;
 }
 
 export class Harness {
@@ -120,6 +125,7 @@ export class Harness {
   private readonly esmMaxConcurrency: number;
   private nextTickMs: number;
   private nextReconcileMs: number;
+  private readonly schedulesUntilMs: number;
   private inFlight = 0;
   private completed = 0;
 
@@ -188,6 +194,10 @@ export class Harness {
     this.nextTickMs = Math.ceil(startMs / 60_000) * 60_000;
     this.nextReconcileMs =
       Math.ceil(startMs / 3_600_000) * 3_600_000 + (options.reconcileOffsetMs ?? 30_000);
+    this.schedulesUntilMs =
+      options.schedulesUntil === undefined
+        ? Number.POSITIVE_INFINITY
+        : new Date(options.schedulesUntil).getTime();
   }
 
   /** Runs the simulation until `end` (inclusive of events at `end`). */
@@ -236,10 +246,14 @@ export class Harness {
     while (this.nextTickMs <= nowMs) {
       await this.dispatch();
       this.nextTickMs += 60_000;
+      if (this.nextTickMs >= this.schedulesUntilMs) this.nextTickMs = Number.POSITIVE_INFINITY;
     }
     while (this.nextReconcileMs <= nowMs) {
       await this.reconcile();
       this.nextReconcileMs += 3_600_000;
+      if (this.nextReconcileMs >= this.schedulesUntilMs) {
+        this.nextReconcileMs = Number.POSITIVE_INFINITY;
+      }
     }
   }
 

@@ -1,0 +1,66 @@
+{
+  "options": {
+    "rows": 1000000,
+    "providers": 2000,
+    "hotProviderShare": 0.2,
+    "seed": 1,
+    "runDate": "2026-03-01",
+    "profile": {
+      "latencyMs": [200, 1000],
+      "error5xxRate": 0.01,
+      "error4xxRate": 0.005
+    },
+    "esmMaxConcurrency": 100
+  },
+  "wallClockS": 82.56218371700001,
+  "heapUsedMb": 1989.359152,
+  "simulatedUntil": "2026-03-02T06:10:00.000Z",
+  "statusCounts": {
+    "SUCCEEDED": 967768,
+    "FAILED_NON_RETRYABLE": 4912,
+    "FAILED_EXPIRED": 27320
+  },
+  "apiCalls": 982513,
+  "previousDayCalls": 0,
+  "peakConcurrencyPerProvider": 1,
+  "dispatchedPerMinute": {
+    "mean": 694.4444444444445,
+    "min": 585,
+    "max": 787,
+    "stdDev": 26.40164603921969
+  },
+  "callsPerMinute": {
+    "mean": 657.25,
+    "min": 568,
+    "max": 733,
+    "stdDev": 24.169597523426916
+  },
+  "providerLagS": {
+    "p50": 11.199,
+    "p95": 14.024,
+    "max": 55.413
+  },
+  "providerLastFinishH": {
+    "p50": 23.950561666666665,
+    "p95": 23.98418527777778,
+    "max": 23.987043333333332
+  },
+  "logCounts": {
+    "debug": 0,
+    "info": 979089,
+    "warn": 32246,
+    "error": 0
+  },
+  "hotProvider": {
+    "providerId": "provider-00001",
+    "rows": 199942,
+    "maxLagS": 64980.897,
+    "lastFinishH": 30.000249166666666,
+    "succeeded": 171746,
+    "succeededInDay": 136213,
+    "expired": 27320,
+    "dailyCeiling": 144000,
+    "callsInDay": 138339,
+    "busyShare": 0.9621020949074074
+  }
+}

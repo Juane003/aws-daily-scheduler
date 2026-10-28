@@ -30,6 +30,8 @@ Valores **calculados** aplicando la función de slot a los ids `1..N` (no es una
 | 1M        | 694,4               | 585    | 787    | 26,4            | 1,13              |
 | 10M       | 6.944,4             | 6.709  | 7.226  | 81,2            | 1,04              |
 
+La simulación de escala (`npm run simulate`, ver `04-concurrencia-por-proveedor.md`) obtiene exactamente los mismos valores para 1M a partir de las ventanas que completó el Dispatcher (`dispatch_windows.jobs_dispatched`): el Dispatcher despacha lo que el slot wheel reparte. Para 10M los valores son calculados; la simulación de 10M no se corrió (ver `15-preguntas-abiertas.md`).
+
 El desvío coincide con el de una distribución binomial (`√(N · 1/1440)` ≈ 26 para 1M y ≈ 83 para 10M), que es lo esperable de un hash uniforme. El test `tests/unit/slot.test.ts` lo verifica con chi-cuadrado sobre 1M de ids (p > 0,01).
 
 Qué implica por tick:

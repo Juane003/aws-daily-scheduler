@@ -39,6 +39,15 @@ npm test                # unit + integración (en memoria)
 npm run test:coverage   # umbral: 90% de líneas en src/core y src/common
 ```
 
+Simulación de escala (un día completo sobre reloj virtual; **simulación, no benchmark de AWS**). 1M de registros tarda ~1,5 min y usa ~2,5 GB de RAM:
+
+```bash
+npm run simulate -- --rows 1000000 --providers 2000 --hot-provider 0.2
+npm run simulate -- --rows 100000 --out reporte.md --json reporte.json   # guardar el reporte
+```
+
+Resultados de referencia en [`docs/simulacion/`](docs/simulacion/).
+
 Generar seeds para Postgres:
 
 ```bash
@@ -59,7 +68,7 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 | 5. Worker                                                 | ✅        |
 | 6. Requeue y Reconciler                                   | ✅        |
 | 7. Integración en memoria                                 | ✅        |
-| 8. Simulación de escala                                   | pendiente |
+| 8. Simulación de escala                                   | ✅        |
 | 9. Esqueleto CDK (opcional)                               | pendiente |
 | 10. Documentación final                                   | pendiente |
 
