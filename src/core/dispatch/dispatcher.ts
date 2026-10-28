@@ -1,15 +1,14 @@
-import { chunk, mapLimit } from '../../common/concurrency.js';
 import type { Config } from '../../common/config.js';
 import { newJobMessage, toFifoMessage } from '../../common/message.js';
 import { SLOTS_PER_DAY } from '../../common/slot.js';
 import type { Logger, Metrics } from '../../common/telemetry.js';
 import { addDays, businessDate, minuteOfDay } from '../../common/time.js';
+import { sendAll } from '../fifo-sender.js';
 import type { Registry } from '../model.js';
 import type {
   Clock,
   DispatchWindowRepository,
   ExecutionRepository,
-  FifoMessage,
   FifoQueue,
   RegistryRepository,
 } from '../ports.js';
@@ -22,9 +21,6 @@ import type {
  */
 
 export const DISPATCH_PAGE_SIZE = 1000;
-export const SEND_CONCURRENCY = 10;
-/** Retries of the failed entries of a `SendMessageBatch`, after the first try. */
-export const SEND_RETRIES = 3;
 
 export type DispatchConfig = Pick<Config, 'businessTz' | 'lookbackSlots' | 'providerShards'>;
 
@@ -161,36 +157,16 @@ export class Dispatcher {
           config.providerShards,
         ),
       );
-    const failed = await mapLimit(chunk(messages, 10), SEND_CONCURRENCY, (batch) =>
-      this.sendBatch(batch),
+    const failed = await sendAll(
+      this.deps.queue,
+      messages,
+      this.deps.logger,
+      'dispatch send failed',
     );
-    const failedCount = failed.reduce((sum, n) => sum + n, 0);
-    return { inserted: inserted.length, sent: messages.length - failedCount, failed: failedCount };
-  }
-
-  /** Sends one batch, retrying the failed entries. Returns how many still failed. */
-  private async sendBatch(batch: readonly FifoMessage[]): Promise<number> {
-    let pending = batch;
-    let lastError = '';
-    for (let attempt = 0; attempt <= SEND_RETRIES && pending.length > 0; attempt++) {
-      let failedIndexes: number[];
-      try {
-        const result = await this.deps.queue.sendBatch(pending);
-        failedIndexes = result.failed.map((f) => f.index);
-        lastError = result.failed[0]?.error ?? lastError;
-      } catch (error) {
-        failedIndexes = pending.map((_, i) => i);
-        lastError = error instanceof Error ? error.message : String(error);
-      }
-      const current = pending;
-      pending = failedIndexes.map((i) => current[i] as FifoMessage);
-    }
-    if (pending.length > 0) {
-      this.deps.logger.log('error', 'dispatch send failed', {
-        jobIds: pending.map((m) => m.deduplicationId),
-        error: lastError,
-      });
-    }
-    return pending.length;
+    return {
+      inserted: inserted.length,
+      sent: messages.length - failed.length,
+      failed: failed.length,
+    };
   }
 }

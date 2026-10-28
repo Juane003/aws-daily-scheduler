@@ -57,7 +57,7 @@ Las migraciones están en [`database/migrations/`](database/migrations/) (numera
 | 3. Adaptadores en memoria y reloj virtual                 | ✅        |
 | 4. Dispatcher                                             | ✅        |
 | 5. Worker                                                 | ✅        |
-| 6. Requeue y Reconciler                                   | pendiente |
+| 6. Requeue y Reconciler                                   | ✅        |
 | 7. Integración en memoria                                 | pendiente |
 | 8. Simulación de escala                                   | pendiente |
 | 9. Esqueleto CDK (opcional)                               | pendiente |

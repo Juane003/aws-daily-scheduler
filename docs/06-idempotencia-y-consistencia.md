@@ -85,7 +85,28 @@ La cola `retry` es standard y puede entregar dos veces. Las dos copias llegan a 
 
 Un body que no valida contra el schema de `zod` va a la DLQ con `reason = 'INVALID_MESSAGE'` y el body original en `raw`. Nunca se descarta en silencio.
 
-## 4. Formato de la DLQ
+## 4. Red de seguridad: el Reconciler
+
+El Reconciler (`src/core/reconcile/reconciler.ts`) corre cada hora (D10) y recupera lo que las capas anteriores no pudieron, **dentro del mismo día**:
+
+| Paso                 | Qué busca                                                                   | Qué hace                                                                          |
+| -------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 1. Stale             | `IN_PROGRESS` con `started_at < now - staleAfterS`                          | Envía a la FIFO con `seq + 1` y el mismo `attempt`; después marca `RETRYING`      |
+| 2. Faltantes         | Registros de slots `< slotActual - 10` sin fila en `executions` para el día | Inserta `ENQUEUED` y envía con `reason = RECONCILE`                               |
+| 3. `ENQUEUED` viejos | `enqueued_at < now - enqueuedStaleH` (3 h)                                  | **Solo reporta** (`EnqueuedStale` y un log con una muestra de `jobId`)            |
+| 4. Estadísticas      | Conteos del día                                                             | `DailyCompletionPct`, `ExecutionsByStatus{status}`, `PendingByProvider{provider}` |
+
+**Decisiones:**
+
+- **En el paso 1 se envía antes de escribir.** Si el envío falla, la fila sigue `IN_PROGRESS` y stale, y la próxima corrida la vuelve a tomar. Si se escribiera `RETRYING` primero y fallara el envío, la fila quedaría `RETRYING` sin mensaje y ningún paso la buscaría. El `UPDATE` posterior exige el `started_at` leído, así que si un Worker reclamó el job en el medio, no se lo pisa.
+- **Los terminales nunca se tocan.** Los pasos 1 y 2 solo miran `IN_PROGRESS` y filas inexistentes.
+- **Margen de 10 slots en el paso 2.** Los slots recientes son del Dispatcher y su lookback; el Reconciler no compite con ellos.
+- **El día anterior también se revisa** mientras sus jobs todavía pueden correr (hasta `endOf(runDate) + expiryGraceH`). Sin esto, un fallo en los últimos minutos antes de medianoche, fuera del lookback, no lo recuperaría nadie.
+- **Paso 3 sin re-encolar.** Un `ENQUEUED` viejo suele ser backlog legítimo de un proveedor caliente (ver `04-concurrencia-por-proveedor.md`); re-encolarlo solo agregaría mensajes a una cola ya larga. Lo que sí indica un problema (un envío del Dispatcher o del Reconciler que falló después del `INSERT`) queda visible en este reporte y en las métricas `DispatchFailures` / `ReconcileFailures`.
+- **Límite por corrida.** Los pasos 1 y 2 comparten `reconcileMaxRequeue` (10.000). Ante un incidente grande, el Reconciler re-encola por tandas horarias en lugar de inundar la FIFO; lo que queda se toma en la corrida siguiente.
+- **`DailyCompletionPct`** es terminales / ejecuciones creadas hasta el momento. A media jornada solo existen las ejecuciones ya despachadas, así que el valor esperado es cercano a 100 menos el backlog en curso; la alarma compara contra un umbral por hora del día (`08-observabilidad.md`).
+
+## 5. Formato de la DLQ
 
 ```ts
 interface DeadLetter {

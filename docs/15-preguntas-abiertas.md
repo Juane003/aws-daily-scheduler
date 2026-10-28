@@ -46,6 +46,13 @@ Decisiones no cubiertas por CLAUDE.md, resueltas con la opción más simple (§1
 - **Sobre de la DLQ.** El Worker envía `{ reason, error, failedAt, message | raw }`. Los mensajes inválidos van al grupo `INVALID_MESSAGE` con el sha256 del body como dedup id.
 - **Métrica de credenciales.** Los 401/403 emiten `CredentialErrors{provider}` y un log de error; la alarma se define sobre esa métrica.
 - **Body de la respuesta.** Se guarda en `results.response` como JSON si parsea, y si no como un string JSON. La duración se mide con el puerto `Clock`.
+- **Envío masivo compartido.** El Dispatcher y el Reconciler usan el mismo `sendAll` (`src/core/fifo-sender.ts`): batches de 10, 10 en paralelo y 3 reintentos de las entradas fallidas.
+- **Requeue y mensajes inválidos.** Un mensaje inválido en `retry` se manda a la DLQ FIFO con `INVALID_MESSAGE` y no se reporta como falla del batch. Si falla ese envío, sí se reporta y vuelve a `retry`.
+- **Reconciler: orden en el paso de stale.** Se envía a la FIFO antes de escribir `RETRYING` (al revés que en el Worker), porque el Reconciler solo busca filas `IN_PROGRESS`: una fila `RETRYING` sin mensaje no la encontraría nadie.
+- **Reconciler: día anterior.** Se revisa completo (los 1.440 slots) mientras no haya pasado `expiryGraceH` desde su fin.
+- **Reconciler: margen.** Solo se buscan faltantes en slots menores a `slotActual - 10`. Es una constante del módulo (`MISSING_SLOT_MARGIN`), no un parámetro de `defaults`.
+- **Reconciler: filas `RETRYING` huérfanas.** Si la Requeue no puede devolver un mensaje a la FIFO y este termina en la DLQ de `retry`, la fila queda `RETRYING` sin mensaje. El Reconciler no las busca: las cubren la alarma de la DLQ de `retry` y el redrive del runbook. Agregar un paso "RETRYING con `next_attempt_at` muy vencido" sería la extensión natural.
+- **Métricas nuevas:** `JobsRequeued{reason}`, `ReconcileFailures`, `EnqueuedStale{runDate}`, `ExecutionsByStatus{status}` y `PendingByProvider{provider}` (solo proveedores con backlog, para acotar la cardinalidad).
 
 ### Fidelidad de los adaptadores en memoria
 

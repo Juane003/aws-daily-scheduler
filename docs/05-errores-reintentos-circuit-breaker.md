@@ -49,6 +49,14 @@ Los reintentos salen de la FIFO principal hacia una cola **standard** `retry` co
 | `DelaySeconds` en la FIFO                                   | Las colas FIFO no admiten delay por mensaje, solo por cola (a verificar en la documentación de SQS).                                                                                                                           |
 | **Cola standard `retry` + Requeue (elegida)**               | El grupo se libera enseguida (ACK) y el delay es por mensaje. Costo: una Lambda más y un salto extra. Se pierde el orden, que acá no importa: cada job es independiente.                                                       |
 
+### Requeue Lambda
+
+La Requeue (`src/core/execute/requeue.ts`) consume `retry` en batches de 10 con `ReportBatchItemFailures`, valida cada mensaje y lo envía a la FIFO con `MessageDeduplicationId = jobId#seq`. No toca la base: el Worker ya dejó la fila en `RETRYING`.
+
+- **Fallas parciales:** solo los mensajes que no se pudieron enviar vuelven a `retry` (se reportan por `messageId`). Tras `maxReceiveCount` entregas pasan a la DLQ standard de `retry`, que tiene alarma.
+- **Duplicados:** `retry` es standard y puede entregar dos veces; la segunda copia llega a la FIFO con el mismo `jobId#seq` y la descarta la deduplicación.
+- **Mensaje inválido:** va a la DLQ FIFO con `reason = 'INVALID_MESSAGE'` y cuenta como manejado. Reintentarlo no lo arreglaría.
+
 La consecuencia de liberar el grupo es que, sin protección, los jobs siguientes del mismo proveedor seguirían golpeando a un proveedor caído. Esa es la razón del circuit breaker (D8).
 
 ## 4. Circuit breaker por proveedor
