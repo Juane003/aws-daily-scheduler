@@ -1,4 +1,4 @@
-# CLAUDE.md — Distributed Daily Scheduler (desafío técnico tapi)
+# CLAUDE.md — Distributed Daily Scheduler
 
 Este archivo es la especificación de trabajo del repo. Leelo completo antes de escribir código o documentación.
 Las decisiones marcadas como **FIJAS** no se cambian sin crear antes un ADR en `docs/adr/` y avisar al usuario.
